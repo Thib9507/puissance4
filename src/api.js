@@ -27,7 +27,7 @@ export function humanError(error) {
   for (const [key, msg] of Object.entries(ERRORS)) {
     if (raw.includes(key)) return msg;
   }
-  if (/Invalid login credentials/i.test(raw)) return 'E-mail ou mot de passe incorrect.';
+  if (/Invalid login credentials/i.test(raw)) return 'Pseudo, e-mail ou mot de passe incorrect.';
   if (/User already registered/i.test(raw)) return 'Un compte existe déjà avec cet e-mail.';
   if (/Email address .* is invalid/i.test(raw)) return 'Cette adresse e-mail est refusée par le serveur.';
   if (/Password should be/i.test(raw)) return 'Mot de passe trop court (6 caractères minimum).';
@@ -42,10 +42,40 @@ async function rpc(fn, args) {
 }
 
 /* ---------------- auth ---------------- */
-export const signIn = (email, password) => supabase.auth.signInWithPassword({ email, password });
+
+/**
+ * Connexion par pseudo OU e-mail.
+ * Avec un e-mail on parle directement à GoTrue ; avec un pseudo on passe par
+ * l'edge function « signin », seule habilitée à retrouver l'e-mail associé.
+ */
+export async function signIn(identifier, password) {
+  const id = (identifier ?? '').trim();
+  if (id.includes('@')) return supabase.auth.signInWithPassword({ email: id, password });
+
+  let data;
+  try {
+    const res = await fetch(`${SUPABASE_URL}/functions/v1/signin`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', apikey: SUPABASE_PUBLISHABLE_KEY },
+      body: JSON.stringify({ identifier: id, password }),
+    });
+    data = await res.json();
+    if (!res.ok || !data?.access_token) {
+      return { data: null, error: new Error(data?.error_description || data?.msg || 'Invalid login credentials') };
+    }
+  } catch (err) {
+    return { data: null, error: err };
+  }
+  return supabase.auth.setSession({
+    access_token: data.access_token,
+    refresh_token: data.refresh_token,
+  });
+}
+
 export const signUp = (email, password, username) =>
   supabase.auth.signUp({ email, password, options: { data: { username } } });
 export const signOut = () => supabase.auth.signOut();
+export const usernameAvailable = (username) => rpc('username_available', { p_username: username });
 
 export async function myProfile() {
   const { data: { user } } = await supabase.auth.getUser();

@@ -1,5 +1,5 @@
 import {
-  supabase, humanError, signIn, signUp, signOut, myProfile,
+  supabase, humanError, signIn, signUp, signOut, myProfile, usernameAvailable,
   createGame, joinGame, playMove, forfeitGame, rematch,
   getGame, ongoingGames, profilesByIds, subscribeToGame,
   statsOverview, statsByColor, statsByOpponent, gameHistory,
@@ -49,38 +49,70 @@ function setMsg(el, text, ok = false) {
    ======================================================= */
 let authMode = 'signin';
 
-$$('#auth-tabs .tab').forEach((tab) => tab.addEventListener('click', () => {
-  authMode = tab.dataset.mode;
-  $$('#auth-tabs .tab').forEach((t) => t.classList.toggle('is-active', t === tab));
-  $('#field-username').hidden = authMode !== 'signup';
-  $('#auth-submit').textContent = authMode === 'signup' ? 'Créer mon compte' : 'Se connecter';
-  $('input[name=password]').autocomplete = authMode === 'signup' ? 'new-password' : 'current-password';
+// Un champ caché reste soumis et validé : on le désactive pour le sortir du formulaire.
+function field(id, visible) {
+  const label = $(id);
+  label.hidden = !visible;
+  $('input', label).disabled = !visible;
+}
+
+function setAuthMode(mode) {
+  authMode = mode;
+  const signup = mode === 'signup';
+  $$('#auth-tabs .tab').forEach((t) => t.classList.toggle('is-active', t.dataset.mode === mode));
+  field('#field-identifier', !signup);
+  field('#field-username', signup);
+  field('#field-email', signup);
+  $('#auth-submit').textContent = signup ? 'Créer mon compte' : 'Se connecter';
+  $('input[name=password]').autocomplete = signup ? 'new-password' : 'current-password';
   setMsg('#auth-msg', '');
-}));
+}
+
+$$('#auth-tabs .tab').forEach((tab) =>
+  tab.addEventListener('click', () => setAuthMode(tab.dataset.mode)));
+
+const FORM_ERRORS = {
+  CHAMPS_MANQUANTS: 'Renseigne ton pseudo (ou ton e-mail) et ton mot de passe.',
+  PSEUDO_FORMAT: 'Pseudo : 3 à 20 caractères, lettres, chiffres, tiret ou souligné.',
+  EMAIL_FORMAT: 'Adresse e-mail invalide.',
+  MDP_COURT: 'Mot de passe : 6 caractères minimum.',
+  PSEUDO_PRIS: 'Ce pseudo est déjà pris.',
+};
 
 $('#auth-form').addEventListener('submit', async (e) => {
   e.preventDefault();
   const form = new FormData(e.target);
-  const email = form.get('email').trim();
-  const password = form.get('password');
-  const username = (form.get('username') || '').trim();
+  const password = form.get('password') ?? '';
   const submit = $('#auth-submit');
-  submit.disabled = true;
   setMsg('#auth-msg', '');
   try {
     if (authMode === 'signup') {
+      const username = (form.get('username') ?? '').trim();
+      const email = (form.get('email') ?? '').trim();
+      if (!/^[A-Za-z0-9_-]{3,20}$/.test(username)) throw new Error('PSEUDO_FORMAT');
+      if (!/^\S+@\S+\.\S+$/.test(email)) throw new Error('EMAIL_FORMAT');
+      if (password.length < 6) throw new Error('MDP_COURT');
+
+      submit.disabled = true;
+      if (!(await usernameAvailable(username))) throw new Error('PSEUDO_PRIS');
+
       const { data, error } = await signUp(email, password, username);
       if (error) throw error;
       if (!data.session) {
         setMsg('#auth-msg', 'Compte créé. Confirme ton adresse via le mail reçu, puis connecte-toi.', true);
+        setAuthMode('signin');
+        $('input[name=identifier]').value = username;
         return;
       }
     } else {
-      const { error } = await signIn(email, password);
+      const identifier = (form.get('identifier') ?? '').trim();
+      if (!identifier || !password) throw new Error('CHAMPS_MANQUANTS');
+      submit.disabled = true;
+      const { error } = await signIn(identifier, password);
       if (error) throw error;
     }
   } catch (err) {
-    setMsg('#auth-msg', humanError(err));
+    setMsg('#auth-msg', FORM_ERRORS[err?.message] ?? humanError(err));
   } finally {
     submit.disabled = false;
   }

@@ -20,14 +20,20 @@
       <button class="tab" data-mode="signup">Inscription</button>
     </div>
 
-    <form id="auth-form" autocomplete="on">
+    <form id="auth-form" autocomplete="on" novalidate>
+      <label class="field" id="field-identifier">
+        <span>Pseudo ou e-mail</span>
+        <input name="identifier" type="text" required placeholder="thibz ou toi@exemple.com"
+               autocomplete="username" autocapitalize="none" spellcheck="false" />
+      </label>
       <label class="field" id="field-username" hidden>
         <span>Pseudo</span>
-        <input name="username" type="text" minlength="3" maxlength="20" placeholder="ton pseudo" autocomplete="nickname" />
+        <input name="username" type="text" minlength="3" maxlength="20" placeholder="ton pseudo"
+               autocomplete="nickname" autocapitalize="none" spellcheck="false" disabled />
       </label>
-      <label class="field">
+      <label class="field" id="field-email" hidden>
         <span>E-mail</span>
-        <input name="email" type="email" required placeholder="toi@exemple.com" autocomplete="email" />
+        <input name="email" type="email" placeholder="toi@exemple.com" autocomplete="email" disabled />
       </label>
       <label class="field">
         <span>Mot de passe</span>
