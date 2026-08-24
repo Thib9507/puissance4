@@ -29,16 +29,29 @@ dashboard Supabase → **Authentication → Sign In / Providers → Email** → 
 *Confirm email*. L'application gère les deux cas (elle affiche « confirme ton adresse »
 si la session n'est pas ouverte immédiatement).
 
+## Connexion
+
+- **Inscription** : pseudo + e-mail + mot de passe. Le pseudo est vérifié comme
+  disponible avant l'envoi (`username_available`), et il est unique sans tenir compte
+  de la casse.
+- **Connexion** : **pseudo ou e-mail** + mot de passe, dans un seul champ.
+  Avec un e-mail, le navigateur parle directement à GoTrue. Avec un pseudo, il passe par
+  l'edge function `signin`, la seule habilitée à retrouver l'e-mail correspondant
+  (via `email_for_username`, réservée au `service_role`) : aucune adresse e-mail n'est
+  jamais exposée au navigateur. Un pseudo inconnu et un mot de passe faux renvoient la
+  même réponse, pour empêcher l'énumération des pseudos.
+
 ## Structure
 
 ```
-index.html            écrans (connexion, lobby, partie, stats, historique)
-styles.css            thème sombre, plateau, animations
-src/config.js         URL + clé publiable Supabase
-src/api.js            client Supabase, appels RPC, temps réel
-src/board.js          rendu du plateau + animation de chute
-src/app.js            état de l'application et enchaînement des écrans
-supabase/migrations/  schéma SQL (déjà appliqué sur le projet)
+index.html                     écrans (connexion, lobby, partie, stats, historique)
+styles.css                     thème sombre, plateau, animations
+src/config.js                  URL + clé publiable Supabase
+src/api.js                     client Supabase, appels RPC, temps réel
+src/board.js                   rendu du plateau + animation de chute
+src/app.js                     état de l'application et enchaînement des écrans
+supabase/migrations/           schéma SQL (déjà appliqué sur le projet)
+supabase/functions/signin/     edge function de connexion par pseudo
 ```
 
 ## Modèle de données
