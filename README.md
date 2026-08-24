@@ -41,6 +41,39 @@ si la session n'est pas ouverte immédiatement).
   jamais exposée au navigateur. Un pseudo inconnu et un mot de passe faux renvoient la
   même réponse, pour empêcher l'énumération des pseudos.
 
+- **Mot de passe oublié** : depuis l'écran de connexion, à partir d'un pseudo ou d'un
+  e-mail. La demande passe par l'edge function `recover`, qui répond toujours la même
+  chose que le compte existe ou non. Le lien reçu ramène sur l'application, qui affiche
+  alors un écran « Nouveau mot de passe ».
+
+## Onglet Compte
+
+Affiche le pseudo, l'e-mail et la date d'inscription, et permet de changer :
+
+- le **pseudo** — via `set_username`, qui valide le format et l'unicité ;
+- l'**e-mail** — un lien de confirmation part vers la nouvelle adresse, le changement
+  n'est effectif qu'une fois ce lien cliqué ;
+- le **mot de passe** — le mot de passe actuel est redemandé et revérifié : une session
+  ouverte ne suffit pas à le changer.
+
+## Configuration Supabase à faire une fois
+
+1. **Authentication → URL Configuration**
+   - *Site URL* : l'adresse publique du jeu (par exemple `https://thib9507.github.io/puissance4/`)
+   - *Redirect URLs* : la même, plus `http://localhost:4173` pour le développement
+
+   Sans ça, les liens de réinitialisation renvoient vers l'adresse par défaut
+   (`localhost:3000`) au lieu de l'application.
+
+2. **SMTP** — le serveur de mail intégré à Supabase est réservé aux tests : il plafonne
+   à quelques e-mails par heure et renvoie alors `over_email_send_rate_limit`. Tant qu'un
+   SMTP personnalisé (Resend, Brevo, Postmark…) n'est pas configuré dans
+   *Project Settings → Authentication → SMTP Settings*, la réinitialisation de mot de
+   passe et le changement d'e-mail ne partiront pas de façon fiable.
+
+3. Optionnel : *Authentication → Policies* → activer **Leaked password protection**
+   (vérification des mots de passe compromis via HaveIBeenPwned).
+
 ## Structure
 
 ```
@@ -52,6 +85,7 @@ src/board.js                   rendu du plateau + animation de chute
 src/app.js                     état de l'application et enchaînement des écrans
 supabase/migrations/           schéma SQL (déjà appliqué sur le projet)
 supabase/functions/signin/     edge function de connexion par pseudo
+supabase/functions/recover/    edge function « mot de passe oublié »
 ```
 
 ## Modèle de données

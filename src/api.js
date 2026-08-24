@@ -2,7 +2,9 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY } from './config.js';
 
 export const supabase = createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
-  auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: false },
+  // detectSessionInUrl : nécessaire pour récupérer la session portée par le lien
+  // de réinitialisation de mot de passe reçu par mail.
+  auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true },
   realtime: { params: { eventsPerSecond: 5 } },
 });
 
@@ -19,6 +21,8 @@ const ERRORS = {
   NOT_YOUR_TURN: 'Ce n’est pas ton tour.',
   COLUMN_FULL: 'Cette colonne est pleine.',
   BAD_COLUMN: 'Colonne invalide.',
+  USERNAME_TAKEN: 'Ce pseudo est déjà pris.',
+  USERNAME_FORMAT: 'Pseudo : 3 à 20 caractères, lettres, chiffres, tiret ou souligné.',
 };
 
 export function humanError(error) {
@@ -32,6 +36,14 @@ export function humanError(error) {
   if (/Email address .* is invalid/i.test(raw)) return 'Cette adresse e-mail est refusée par le serveur.';
   if (/Password should be/i.test(raw)) return 'Mot de passe trop court (6 caractères minimum).';
   if (/Email not confirmed/i.test(raw)) return 'E-mail non confirmé : clique le lien reçu par mail.';
+  if (/should be different from the old/i.test(raw)) return 'Le nouveau mot de passe doit être différent de l’ancien.';
+  if (/email address is already|already been registered/i.test(raw)) return 'Cette adresse e-mail est déjà utilisée.';
+  if (/same as the current|already in use/i.test(raw)) return 'Cette adresse est déjà celle de ton compte.';
+  if (/session|jwt|token/i.test(raw) && /expired|invalid/i.test(raw)) return 'Lien expiré : redemande un lien de réinitialisation.';
+  if (/email rate limit|over_email_send_rate_limit/i.test(raw)) {
+    return 'Quota d’envoi d’e-mails atteint (le SMTP par défaut de Supabase est très limité). Réessaie plus tard.';
+  }
+  if (/For security purposes|rate limit|too many/i.test(raw)) return 'Trop de tentatives, réessaie dans une minute.';
   return raw;
 }
 
@@ -81,10 +93,38 @@ export async function myProfile() {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return null;
   const { data, error } = await supabase
-    .from('profiles').select('id, username').eq('id', user.id).maybeSingle();
+    .from('profiles').select('id, username, created_at').eq('id', user.id).maybeSingle();
   if (error) throw error;
   return data;
 }
+
+/* ---------------- compte ---------------- */
+
+/** Demande d'un lien de réinitialisation, à partir d'un pseudo ou d'un e-mail. */
+export async function requestPasswordReset(identifier) {
+  await fetch(`${SUPABASE_URL}/functions/v1/recover`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', apikey: SUPABASE_PUBLISHABLE_KEY },
+    body: JSON.stringify({
+      identifier: (identifier ?? '').trim(),
+      redirect_to: `${location.origin}${location.pathname}`,
+    }),
+  });
+  // Réponse volontairement identique que le compte existe ou non.
+}
+
+/** Vérifie le mot de passe actuel en rejouant une connexion sur le même compte. */
+export async function checkCurrentPassword(password) {
+  const { data: { session } } = await supabase.auth.getSession();
+  const email = session?.user?.email;
+  if (!email) return false;
+  const { error } = await supabase.auth.signInWithPassword({ email, password });
+  return !error;
+}
+
+export const updatePassword = (password) => supabase.auth.updateUser({ password });
+export const updateEmail = (email) => supabase.auth.updateUser({ email });
+export const setUsername = (username) => rpc('set_username', { p_username: username });
 
 /* ---------------- parties ---------------- */
 export const createGame = () => rpc('create_game');

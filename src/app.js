@@ -1,5 +1,6 @@
 import {
   supabase, humanError, signIn, signUp, signOut, myProfile, usernameAvailable,
+  requestPasswordReset, checkCurrentPassword, updatePassword, updateEmail, setUsername,
   createGame, joinGame, playMove, forfeitGame, rematch,
   getGame, ongoingGames, profilesByIds, subscribeToGame,
   statsOverview, statsByColor, statsByOpponent, gameHistory,
@@ -31,6 +32,7 @@ function showView(name) {
   if (name === 'stats') loadStats();
   if (name === 'history') loadHistory();
   if (name === 'home') loadOngoing();
+  if (name === 'account') loadAccount();
 }
 
 $$('.navbtn').forEach((b) => b.addEventListener('click', () => {
@@ -123,18 +125,86 @@ $('#signout').addEventListener('click', async () => {
   await signOut();
 });
 
-supabase.auth.onAuthStateChange((_event, session) => { boot(session); });
-
 let bootedFor = null;
+
+/* ---------- mot de passe oublié ---------- */
+function showForgot(show) {
+  $('#forgot-form').hidden = !show;
+  $('#auth-form').hidden = show;
+  $('#auth-tabs').hidden = show;
+  $('#forgot-line').hidden = show;
+  setMsg('#forgot-msg', '');
+  setMsg('#auth-msg', '');
+}
+
+$('#btn-forgot').addEventListener('click', () => showForgot(true));
+$('#btn-forgot-cancel').addEventListener('click', () => showForgot(false));
+
+$('#forgot-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const identifier = (new FormData(e.target).get('identifier') ?? '').trim();
+  if (!identifier) { setMsg('#forgot-msg', 'Indique ton pseudo ou ton e-mail.'); return; }
+  const btn = $('button[type=submit]', e.target);
+  btn.disabled = true;
+  await requestPasswordReset(identifier);
+  btn.disabled = false;
+  // même message dans tous les cas : impossible de deviner qui est inscrit
+  setMsg('#forgot-msg', 'Si un compte correspond, un lien vient d’être envoyé par e-mail.', true);
+});
+
+/* ---------- nouveau mot de passe après clic sur le lien reçu ---------- */
+let recoveryMode = /type=recovery/.test(location.hash);
+
+function showRecovery() {
+  bootedFor = null;
+  $('#screen-auth').hidden = true;
+  $('#screen-app').hidden = true;
+  $('#screen-recovery').hidden = false;
+}
+
+$('#recovery-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const form = new FormData(e.target);
+  const password = form.get('password') ?? '';
+  const confirm = form.get('confirm') ?? '';
+  const btn = $('button[type=submit]', e.target);
+  setMsg('#recovery-msg', '');
+  if (password.length < 6) { setMsg('#recovery-msg', 'Mot de passe : 6 caractères minimum.'); return; }
+  if (password !== confirm) { setMsg('#recovery-msg', 'Les deux mots de passe ne correspondent pas.'); return; }
+  btn.disabled = true;
+  try {
+    const { error } = await updatePassword(password);
+    if (error) throw error;
+    recoveryMode = false;
+    e.target.reset();
+    history.replaceState(null, '', location.pathname);
+    $('#screen-recovery').hidden = true;
+    const { data } = await supabase.auth.getSession();
+    await boot(data.session);
+  } catch (err) {
+    setMsg('#recovery-msg', humanError(err));
+  } finally {
+    btn.disabled = false;
+  }
+});
+
+supabase.auth.onAuthStateChange((event, session) => {
+  if (event === 'PASSWORD_RECOVERY') { recoveryMode = true; showRecovery(); return; }
+  if (recoveryMode && session) { showRecovery(); return; }
+  boot(session);
+});
 
 async function boot(session) {
   if (!session) {
     bootedFor = null;
     state.me = null;
+    showForgot(false);
+    $('#screen-recovery').hidden = true;
     $('#screen-auth').hidden = false;
     $('#screen-app').hidden = true;
     return;
   }
+  if (recoveryMode) { showRecovery(); return; }
   if (bootedFor === session.user.id) return; // évite un double démarrage
   bootedFor = session.user.id;
   // le profil est créé par un trigger : petite attente si la course est perdue
@@ -147,8 +217,10 @@ async function boot(session) {
   state.names[state.me.id] = state.me.username;
   $('#me-name').textContent = state.me.username;
   $('#screen-auth').hidden = true;
+  $('#screen-recovery').hidden = true;
   $('#screen-app').hidden = false;
-  showView('home');
+  // ne pas renvoyer au lobby si une partie est déjà ouverte à l'écran
+  if (!state.game) showView('home');
   handleInviteHash();
 }
 
@@ -222,13 +294,25 @@ async function doJoin(code) {
   }
 }
 
-function handleInviteHash() {
+// Le code d'invitation est retenu dès le chargement du module : il ne dépend
+// plus du moment où la session est prête, et le hash est retiré tout de suite
+// pour ne pas être rejoué à chaque passage dans boot().
+let pendingInvite = readInviteHash();
+
+function readInviteHash() {
   const code = location.hash.replace('#', '').toUpperCase();
-  if (/^[A-Z0-9]{6}$/.test(code)) {
-    history.replaceState(null, '', location.pathname);
-    $('#join-code').value = code;
-    doJoin(code);
-  }
+  if (!/^[A-Z0-9]{6}$/.test(code)) return null;
+  history.replaceState(null, '', location.pathname);
+  return code;
+}
+
+function handleInviteHash() {
+  pendingInvite = readInviteHash() ?? pendingInvite;
+  if (!pendingInvite) return;
+  const code = pendingInvite;
+  pendingInvite = null;
+  $('#join-code').value = code;
+  doJoin(code);
 }
 
 async function loadOngoing() {
@@ -490,6 +574,92 @@ async function loadHistory() {
     $('#history').innerHTML = `<p class="msg">${esc(humanError(err))}</p>`;
   }
 }
+
+/* =======================================================
+   Compte
+   ======================================================= */
+async function loadAccount() {
+  const { data } = await supabase.auth.getSession();
+  const user = data.session?.user;
+  $('#acc-username').textContent = state.me?.username ?? '—';
+  $('#acc-email').textContent = user?.email ?? '—';
+  $('#acc-since').textContent = state.me?.created_at
+    ? new Date(state.me.created_at).toLocaleDateString('fr-FR', { dateStyle: 'long' })
+    : '—';
+  $('#form-username input[name=username]').value = state.me?.username ?? '';
+  ['#username-msg', '#email-msg', '#password-msg'].forEach((m) => setMsg(m, ''));
+}
+
+$('#form-username').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const value = (new FormData(e.target).get('username') ?? '').trim();
+  const btn = $('button[type=submit]', e.target);
+  setMsg('#username-msg', '');
+  if (value === state.me?.username) { setMsg('#username-msg', 'C’est déjà ton pseudo.'); return; }
+  if (!/^[A-Za-z0-9_-]{3,20}$/.test(value)) {
+    setMsg('#username-msg', FORM_ERRORS.PSEUDO_FORMAT); return;
+  }
+  btn.disabled = true;
+  try {
+    const profile = await setUsername(value);
+    state.me = { ...state.me, ...profile };
+    state.names[state.me.id] = profile.username;
+    $('#me-name').textContent = profile.username;
+    $('#acc-username').textContent = profile.username;
+    setMsg('#username-msg', 'Pseudo mis à jour.', true);
+  } catch (err) {
+    setMsg('#username-msg', humanError(err));
+  } finally {
+    btn.disabled = false;
+  }
+});
+
+$('#form-email').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const email = (new FormData(e.target).get('email') ?? '').trim();
+  const btn = $('button[type=submit]', e.target);
+  setMsg('#email-msg', '');
+  if (!/^\S+@\S+\.\S+$/.test(email)) { setMsg('#email-msg', FORM_ERRORS.EMAIL_FORMAT); return; }
+  btn.disabled = true;
+  try {
+    const { error } = await updateEmail(email);
+    if (error) throw error;
+    e.target.reset();
+    setMsg('#email-msg', `Lien de confirmation envoyé à ${email}. L’adresse changera une fois le lien cliqué.`, true);
+  } catch (err) {
+    setMsg('#email-msg', humanError(err));
+  } finally {
+    btn.disabled = false;
+  }
+});
+
+$('#form-password').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const form = new FormData(e.target);
+  const current = form.get('current') ?? '';
+  const password = form.get('password') ?? '';
+  const confirm = form.get('confirm') ?? '';
+  const btn = $('button[type=submit]', e.target);
+  setMsg('#password-msg', '');
+  if (password.length < 6) { setMsg('#password-msg', FORM_ERRORS.MDP_COURT); return; }
+  if (password !== confirm) { setMsg('#password-msg', 'Les deux mots de passe ne correspondent pas.'); return; }
+  btn.disabled = true;
+  try {
+    // on revérifie le mot de passe actuel : une session ouverte ne suffit pas
+    if (!(await checkCurrentPassword(current))) {
+      setMsg('#password-msg', 'Mot de passe actuel incorrect.');
+      return;
+    }
+    const { error } = await updatePassword(password);
+    if (error) throw error;
+    e.target.reset();
+    setMsg('#password-msg', 'Mot de passe mis à jour.', true);
+  } catch (err) {
+    setMsg('#password-msg', humanError(err));
+  } finally {
+    btn.disabled = false;
+  }
+});
 
 /* =======================================================
    Démarrage

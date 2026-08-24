@@ -85,6 +85,23 @@ h2 { font-size: 1.05rem; letter-spacing: .01em; }
 }
 .field input:focus, .code-input:focus { outline: 2px solid var(--blue); outline-offset: 1px; }
 
+.linkbtn {
+  background: none; border: 0; color: var(--muted); cursor: pointer;
+  text-decoration: underline; padding: .3rem; font-size: .88rem;
+}
+.linkbtn:hover { color: var(--txt); }
+.center { text-align: center; margin: .6rem 0 0; }
+
+.row-form { display: flex; gap: .6rem; align-items: flex-end; flex-wrap: wrap; }
+.row-form .field { margin-bottom: 0; }
+.field.grow { flex: 1; min-width: 200px; }
+
+.infos { margin: 0; display: grid; gap: .1rem; }
+.infos > div { display: flex; justify-content: space-between; gap: 1rem; padding: .5rem 0; border-bottom: 1px solid var(--line); }
+.infos > div:last-child { border-bottom: 0; }
+.infos dt { color: var(--muted); font-size: .85rem; }
+.infos dd { margin: 0; font-weight: 600; }
+
 .msg { min-height: 1.2rem; margin: .7rem 0 0; font-size: .9rem; color: #ff9aa0; }
 .msg.ok { color: var(--ok); }
 .muted { color: var(--muted); font-size: .9rem; }
