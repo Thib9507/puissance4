@@ -42,6 +42,41 @@
       <button class="btn primary block" type="submit" id="auth-submit">Se connecter</button>
       <p class="msg" id="auth-msg"></p>
     </form>
+
+    <p class="center" id="forgot-line">
+      <button class="linkbtn" id="btn-forgot">Mot de passe oublié ?</button>
+    </p>
+
+    <form id="forgot-form" hidden novalidate>
+      <label class="field">
+        <span>Pseudo ou e-mail</span>
+        <input name="identifier" type="text" required placeholder="thibz ou toi@exemple.com"
+               autocapitalize="none" spellcheck="false" />
+      </label>
+      <button class="btn primary block" type="submit">Envoyer le lien de réinitialisation</button>
+      <p class="center"><button class="linkbtn" type="button" id="btn-forgot-cancel">Retour à la connexion</button></p>
+      <p class="msg" id="forgot-msg"></p>
+    </form>
+  </div>
+</section>
+
+<!-- ============ NOUVEAU MOT DE PASSE (lien reçu par mail) ============ -->
+<section id="screen-recovery" class="screen" hidden>
+  <div class="auth-card">
+    <h1 class="logo"><span class="dot y"></span><span class="dot r"></span> Nouveau mot de passe</h1>
+    <p class="tagline">Choisis un nouveau mot de passe pour ton compte.</p>
+    <form id="recovery-form" novalidate>
+      <label class="field">
+        <span>Nouveau mot de passe</span>
+        <input name="password" type="password" required minlength="6" autocomplete="new-password" placeholder="••••••••" />
+      </label>
+      <label class="field">
+        <span>Confirmation</span>
+        <input name="confirm" type="password" required minlength="6" autocomplete="new-password" placeholder="••••••••" />
+      </label>
+      <button class="btn primary block" type="submit">Enregistrer</button>
+      <p class="msg" id="recovery-msg"></p>
+    </form>
   </div>
 </section>
 
@@ -53,6 +88,7 @@
       <button class="navbtn is-active" data-view="home">Jouer</button>
       <button class="navbtn" data-view="stats">Stats</button>
       <button class="navbtn" data-view="history">Historique</button>
+      <button class="navbtn" data-view="account">Compte</button>
     </nav>
     <div class="me">
       <span id="me-name" class="pill"></span>
@@ -139,6 +175,66 @@
       <div class="card">
         <h2>Historique</h2>
         <div id="history"></div>
+      </div>
+    </div>
+
+    <!-- ---------- COMPTE ---------- -->
+    <div class="view" data-view="account" hidden>
+      <div class="card">
+        <h2>Mon compte</h2>
+        <dl class="infos">
+          <div><dt>Pseudo</dt><dd id="acc-username">—</dd></div>
+          <div><dt>E-mail</dt><dd id="acc-email">—</dd></div>
+          <div><dt>Membre depuis</dt><dd id="acc-since">—</dd></div>
+        </dl>
+      </div>
+
+      <div class="card">
+        <h2>Changer de pseudo</h2>
+        <p class="muted">C'est le nom que voient tes adversaires, et il sert aussi à te connecter.</p>
+        <form id="form-username" class="row-form" novalidate>
+          <label class="field grow">
+            <span>Nouveau pseudo</span>
+            <input name="username" type="text" required minlength="3" maxlength="20"
+                   autocapitalize="none" spellcheck="false" placeholder="ton nouveau pseudo" />
+          </label>
+          <button class="btn primary" type="submit">Enregistrer</button>
+        </form>
+        <p class="msg" id="username-msg"></p>
+      </div>
+
+      <div class="card">
+        <h2>Changer d'e-mail</h2>
+        <p class="muted">Un lien de confirmation sera envoyé à la nouvelle adresse ; le changement
+          ne prend effet qu'une fois ce lien cliqué.</p>
+        <form id="form-email" class="row-form" novalidate>
+          <label class="field grow">
+            <span>Nouvelle adresse</span>
+            <input name="email" type="email" required placeholder="nouvelle@exemple.com" autocomplete="email" />
+          </label>
+          <button class="btn primary" type="submit">Envoyer</button>
+        </form>
+        <p class="msg" id="email-msg"></p>
+      </div>
+
+      <div class="card">
+        <h2>Changer de mot de passe</h2>
+        <form id="form-password" novalidate>
+          <label class="field">
+            <span>Mot de passe actuel</span>
+            <input name="current" type="password" required autocomplete="current-password" placeholder="••••••••" />
+          </label>
+          <label class="field">
+            <span>Nouveau mot de passe</span>
+            <input name="password" type="password" required minlength="6" autocomplete="new-password" placeholder="••••••••" />
+          </label>
+          <label class="field">
+            <span>Confirmation</span>
+            <input name="confirm" type="password" required minlength="6" autocomplete="new-password" placeholder="••••••••" />
+          </label>
+          <button class="btn primary" type="submit">Enregistrer</button>
+          <p class="msg" id="password-msg"></p>
+        </form>
       </div>
     </div>
   </main>
