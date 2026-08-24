@@ -1,0 +1,143 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>Puissance 4</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><circle cx='50' cy='50' r='42' fill='%23f5c518'/></svg>" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+
+<!-- ============ ÉCRAN DE CONNEXION ============ -->
+<section id="screen-auth" class="screen">
+  <div class="auth-card">
+    <h1 class="logo"><span class="dot y"></span><span class="dot r"></span> Puissance 4</h1>
+    <p class="tagline">Défie tes amis avec un simple code.</p>
+
+    <div class="tabs" id="auth-tabs">
+      <button class="tab is-active" data-mode="signin">Connexion</button>
+      <button class="tab" data-mode="signup">Inscription</button>
+    </div>
+
+    <form id="auth-form" autocomplete="on">
+      <label class="field" id="field-username" hidden>
+        <span>Pseudo</span>
+        <input name="username" type="text" minlength="3" maxlength="20" placeholder="ton pseudo" autocomplete="nickname" />
+      </label>
+      <label class="field">
+        <span>E-mail</span>
+        <input name="email" type="email" required placeholder="toi@exemple.com" autocomplete="email" />
+      </label>
+      <label class="field">
+        <span>Mot de passe</span>
+        <input name="password" type="password" required minlength="6" placeholder="••••••••" autocomplete="current-password" />
+      </label>
+      <button class="btn primary block" type="submit" id="auth-submit">Se connecter</button>
+      <p class="msg" id="auth-msg"></p>
+    </form>
+  </div>
+</section>
+
+<!-- ============ APPLICATION ============ -->
+<section id="screen-app" class="screen" hidden>
+  <header class="topbar">
+    <div class="logo small"><span class="dot y"></span><span class="dot r"></span> Puissance&nbsp;4</div>
+    <nav class="nav">
+      <button class="navbtn is-active" data-view="home">Jouer</button>
+      <button class="navbtn" data-view="stats">Stats</button>
+      <button class="navbtn" data-view="history">Historique</button>
+    </nav>
+    <div class="me">
+      <span id="me-name" class="pill"></span>
+      <button class="btn ghost" id="signout">Déconnexion</button>
+    </div>
+  </header>
+
+  <main>
+    <!-- ---------- ACCUEIL / LOBBY ---------- -->
+    <div class="view" data-view="home">
+      <div class="lobby">
+        <div class="card">
+          <h2>Créer un défi</h2>
+          <p class="muted">Génère un code et envoie-le à ton adversaire.</p>
+          <button class="btn primary block" id="btn-create">Nouvelle partie</button>
+          <div id="invite" hidden>
+            <div class="code-box">
+              <span class="code" id="invite-code">------</span>
+              <button class="btn ghost" id="btn-copy" title="Copier le code">Copier</button>
+              <button class="btn ghost" id="btn-copy-link" title="Copier le lien d'invitation">Lien</button>
+            </div>
+            <p class="muted waiting"><span class="spinner"></span> En attente de l'adversaire…</p>
+            <button class="btn ghost small" id="btn-cancel-invite">Annuler</button>
+          </div>
+        </div>
+
+        <div class="card">
+          <h2>Rejoindre un défi</h2>
+          <p class="muted">Saisis le code reçu.</p>
+          <form id="join-form">
+            <input id="join-code" class="code-input" maxlength="6" placeholder="ABC123"
+                   autocapitalize="characters" autocomplete="off" spellcheck="false" />
+            <button class="btn primary block" type="submit">Rejoindre</button>
+          </form>
+        </div>
+      </div>
+
+      <div class="card" id="ongoing-card" hidden>
+        <h2>Parties en cours</h2>
+        <ul class="list" id="ongoing-list"></ul>
+      </div>
+      <p class="msg" id="home-msg"></p>
+    </div>
+
+    <!-- ---------- PARTIE ---------- -->
+    <div class="view" data-view="game" hidden>
+      <div class="game-wrap">
+        <div class="players">
+          <div class="player" id="player-me"><span class="disc"></span><span class="pname"></span></div>
+          <div class="vs">vs</div>
+          <div class="player" id="player-opp"><span class="disc"></span><span class="pname"></span></div>
+        </div>
+
+        <div class="status" id="game-status">…</div>
+
+        <div class="board-outer">
+          <div class="board" id="board"></div>
+        </div>
+
+        <div class="game-actions">
+          <button class="btn ghost" id="btn-back">← Retour</button>
+          <button class="btn ghost danger" id="btn-forfeit">Abandonner</button>
+          <button class="btn primary" id="btn-rematch" hidden>Revanche</button>
+        </div>
+        <p class="msg" id="game-msg"></p>
+      </div>
+    </div>
+
+    <!-- ---------- STATS ---------- -->
+    <div class="view" data-view="stats" hidden>
+      <div class="kpis" id="kpis"></div>
+      <div class="card">
+        <h2>Par couleur</h2>
+        <div id="stats-color"></div>
+      </div>
+      <div class="card">
+        <h2>Face à face</h2>
+        <div id="stats-opp"></div>
+      </div>
+    </div>
+
+    <!-- ---------- HISTORIQUE ---------- -->
+    <div class="view" data-view="history" hidden>
+      <div class="card">
+        <h2>Historique</h2>
+        <div id="history"></div>
+      </div>
+    </div>
+  </main>
+</section>
+
+<script type="module" src="src/app.js"></script>
+</body>
+</html>
