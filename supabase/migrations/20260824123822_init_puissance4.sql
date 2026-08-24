@@ -95,25 +95,27 @@ begin
   return null;
 end $fn$;
 
--- Code de défi lisible (sans caractères ambigus)
+-- Code de défi lisible (sans caractères ambigus).
+-- Cette version comporte une ambiguïté entre la variable `code` et la colonne
+-- `games.code` ; elle est corrigée par la migration 20260824123947 qui suit.
 create or replace function public.new_game_code()
 returns text language plpgsql volatile as $fn$
 declare
   alphabet text := 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-  v_code text; i int; tries int := 0;
+  code text; i int; tries int := 0;
 begin
   loop
-    v_code := '';
+    code := '';
     for i in 1..6 loop
-      v_code := v_code || substr(alphabet, 1 + floor(random() * char_length(alphabet))::int, 1);
+      code := code || substr(alphabet, 1 + floor(random() * char_length(alphabet))::int, 1);
     end loop;
     exit when not exists (
-      select 1 from public.games g where g.code = v_code and g.status in ('waiting','playing')
+      select 1 from public.games g where g.code = code and g.status in ('waiting','playing')
     );
     tries := tries + 1;
     if tries > 50 then raise exception 'CODE_GENERATION_FAILED'; end if;
   end loop;
-  return v_code;
+  return code;
 end $fn$;
 
 -- =========================================================
