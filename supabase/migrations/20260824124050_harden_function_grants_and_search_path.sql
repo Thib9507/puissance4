@@ -4,6 +4,7 @@
 alter function public.cell_at(text, int, int)            set search_path = '';
 alter function public.winning_line(text, int, int, text)  set search_path = '';
 alter function public.new_game_code()                     set search_path = '';
+alter function public.handle_new_user()                   set search_path = '';
 
 create or replace function public.handle_new_user()
 returns trigger language plpgsql security definer set search_path = '' as $fn$

@@ -83,10 +83,59 @@ src/config.js                  URL + clé publiable Supabase
 src/api.js                     client Supabase, appels RPC, temps réel
 src/board.js                   rendu du plateau + animation de chute
 src/app.js                     état de l'application et enchaînement des écrans
-supabase/migrations/           schéma SQL (déjà appliqué sur le projet)
+supabase/config.toml           configuration du projet (CLI Supabase)
+supabase/migrations/           schéma SQL, une migration par fichier
 supabase/functions/signin/     edge function de connexion par pseudo
 supabase/functions/recover/    edge function « mot de passe oublié »
 ```
+
+## Faire évoluer la base
+
+Le dépôt fait autorité : le schéma et les edge functions se déploient depuis les
+fichiers, jamais à la main dans le tableau de bord. Les cinq migrations présentes
+correspondent exactement au SQL appliqué sur le projet — même horodatage, même
+contenu — de sorte qu'un `db push` sur le projet existant n'a rien à rejouer,
+tandis qu'un projet vierge est reconstruit à l'identique en les rejouant dans
+l'ordre.
+
+La CLI n'a pas besoin d'être installée, `npx` suffit. Une seule fois :
+
+```bash
+npx supabase login
+```
+
+```bash
+npx supabase link --project-ref czsdwhxlaowuwhhlytja
+```
+
+Ensuite, pour chaque changement de schéma :
+
+```bash
+npx supabase migration new nom_du_changement
+```
+
+On écrit le SQL dans le fichier créé, puis on applique :
+
+```bash
+npx supabase db push
+```
+
+Pour les edge functions (le `verify_jwt = false` des deux fonctions publiques est
+porté par `config.toml`, il n'y a rien à préciser en ligne de commande) :
+
+```bash
+npx supabase functions deploy signin recover
+```
+
+Et pour vérifier à tout moment que le dépôt et le projet ne divergent pas :
+
+```bash
+npx supabase migration list --linked
+```
+
+Les colonnes *Local* et *Remote* doivent afficher les mêmes versions. Un écart
+signifie qu'une modification a été faite hors du dépôt — `npx supabase db pull`
+la rapatrie alors dans une nouvelle migration.
 
 ## Modèle de données
 
