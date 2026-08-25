@@ -22,6 +22,8 @@ const ERRORS = {
   COLUMN_FULL: 'Cette colonne est pleine.',
   BAD_COLUMN: 'Colonne invalide.',
   USERNAME_TAKEN: 'Ce pseudo est déjà pris.',
+  NO_REMATCH_REQUEST: 'Aucune demande de revanche en cours.',
+  BAD_LEVEL: 'Niveau de difficulté invalide.',
   USERNAME_FORMAT: 'Pseudo : 3 à 20 caractères, lettres, chiffres, tiret ou souligné.',
 };
 
@@ -131,7 +133,14 @@ export const createGame = () => rpc('create_game');
 export const joinGame = (code) => rpc('join_game', { p_code: code });
 export const playMove = (gameId, col) => rpc('play_move', { p_game: gameId, p_col: col });
 export const forfeitGame = (gameId) => rpc('forfeit_game', { p_game: gameId });
-export const rematch = (gameId) => rpc('rematch', { p_game: gameId });
+export const timeoutMove = (gameId) => rpc('timeout_move', { p_game: gameId });
+export const createSoloGame = (level) => rpc('create_solo_game', { p_level: level });
+export const requestRematch = (gameId) => rpc('request_rematch', { p_game: gameId });
+export const acceptRematch = (gameId) => rpc('accept_rematch', { p_game: gameId });
+export const declineRematch = (gameId) => rpc('decline_rematch', { p_game: gameId });
+
+/** Durée d'un tour, en secondes. Le serveur applique la même valeur. */
+export const TURN_SECONDS = 30;
 
 export async function getGame(id) {
   const { data, error } = await supabase.from('games').select('*').eq('id', id).maybeSingle();
@@ -160,6 +169,8 @@ export async function profilesByIds(ids) {
 export const statsOverview = () => rpc('stats_overview');
 export const statsByColor = () => rpc('stats_by_color');
 export const statsByOpponent = () => rpc('stats_by_opponent');
+export const statsVsAi = () => rpc('stats_vs_ai');
+export const leaderboard = (limit = 20) => rpc('leaderboard', { p_limit: limit });
 export const gameHistory = (limit = 25) => rpc('game_history', { p_limit: limit, p_offset: 0 });
 
 /* ---------------- temps réel ---------------- */

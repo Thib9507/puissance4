@@ -126,6 +126,16 @@
         </div>
       </div>
 
+      <div class="card">
+        <h2>Jouer contre l'ordinateur</h2>
+        <p class="muted">Partie d'entraînement : elle n'entre pas dans le classement Elo.</p>
+        <div class="levels">
+          <button class="btn" data-level="1">Facile</button>
+          <button class="btn" data-level="2">Moyen</button>
+          <button class="btn" data-level="3">Difficile</button>
+        </div>
+      </div>
+
       <div class="card" id="ongoing-card" hidden>
         <h2>Parties en cours</h2>
         <ul class="list" id="ongoing-list"></ul>
@@ -144,8 +154,21 @@
 
         <div class="status" id="game-status">…</div>
 
+        <div class="clock" id="clock" hidden>
+          <div class="clock-bar"><i id="clock-fill"></i></div>
+          <span class="clock-left" id="clock-left">30</span>
+        </div>
+
         <div class="board-outer">
           <div class="board" id="board"></div>
+        </div>
+
+        <div class="rematch-box" id="rematch-box" hidden>
+          <span id="rematch-text"></span>
+          <span class="rematch-actions">
+            <button class="btn primary small" id="btn-rematch-accept">Accepter</button>
+            <button class="btn ghost small" id="btn-rematch-decline">Refuser</button>
+          </span>
         </div>
 
         <div class="game-actions">
@@ -167,6 +190,15 @@
       <div class="card">
         <h2>Face à face</h2>
         <div id="stats-opp"></div>
+      </div>
+      <div class="card">
+        <h2>Classement Elo</h2>
+        <p class="muted">Tout le monde démarre à 1000. Les parties contre l'ordinateur ne comptent pas.</p>
+        <div id="leaderboard"></div>
+      </div>
+      <div class="card">
+        <h2>Contre l'ordinateur</h2>
+        <div id="stats-ai"></div>
       </div>
     </div>
 
