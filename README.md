@@ -8,6 +8,7 @@ Jeu de puissance 4 en ligne : on défie quelqu'un en lui envoyant un **code à 6
 - **30 secondes par coup** : passé ce délai, un coup est joué au hasard.
 - **Mode solo** contre l'ordinateur, en trois niveaux.
 - **Classement Elo** entre les joueurs.
+- **Amis** : on s'ajoute par pseudo et on consulte la fiche détaillée de ses amis.
 - Front : HTML/CSS/JS en modules ES, **aucune étape de build**.
 - Back : **Supabase** (Postgres + Auth + Realtime), projet `puissance4`
   (`https://czsdwhxlaowuwhhlytja.supabase.co`, région `eu-west-3`).
@@ -24,6 +25,10 @@ ne marche pas : les modules ES ont besoin d'un serveur.
 
 Pour tester à deux sur la même machine, utiliser une fenêtre de navigation privée pour le
 second joueur (les sessions Supabase sont stockées par origine).
+
+`python -m http.server` n'envoie aucun en-tête de cache : après avoir modifié un fichier
+de `src/`, il faut recharger avec **Ctrl+F5**, sinon le navigateur continue de servir
+l'ancien module et l'application paraît figée sur la version précédente.
 
 ### Avant la première inscription
 
@@ -76,6 +81,28 @@ nouvelle partie démarre aussitôt.
   e-mail. La demande passe par l'edge function `recover`, qui répond toujours la même
   chose que le compte existe ou non. Le lien reçu ramène sur l'application, qui affiche
   alors un écran « Nouveau mot de passe ».
+
+## Onglet Social
+
+**Ajouter un ami.** La recherche se fait par début de pseudo (2 caractères minimum,
+10 résultats maximum) et indique déjà la relation avec chaque joueur : *Ajouter*,
+*Demande envoyée*, *Accepter* si la personne t'a devancé, ou *Déjà ami*. Si les deux
+personnes s'ajoutent chacune de leur côté, la seconde demande vaut acceptation. Une
+pastille sur l'onglet signale les demandes reçues, dès la connexion.
+
+**La fiche d'un ami.** En cliquant sur son nom : Elo et rang, date d'inscription,
+bilan classé (parties, victoires, défaites, taux de victoire, meilleure série, coups
+par partie), répartition par couleur, et le **face à face avec toi** accompagné des
+cinq dernières parties entre vous.
+
+Cette fiche est réservée aux amis acceptés — `friend_profile` vérifie la relation
+avant de répondre et renvoie `NOT_A_FRIEND` sinon. C'est la contrepartie de
+l'acceptation : personne d'autre ne voit ces chiffres.
+
+Une relation est unique par paire quel que soit le sens de la demande (index sur
+`least/greatest` des deux identifiants), et la table `friendships` n'est accessible
+qu'en lecture, sur ses propres lignes : ajouts, acceptations et suppressions passent
+tous par des RPC.
 
 ## Onglet Compte
 
@@ -175,7 +202,8 @@ la rapatrie alors dans une nouvelle migration.
 |---|---|
 | `profiles` | pseudo lié à `auth.users` (créé automatiquement à l'inscription) |
 | `games` | une partie : code, joueurs, couleurs, plateau, tour, résultat |
-| `moves` | un coup par ligne (numéro, colonne, ligne, couleur) |
+| `moves` | un coup par ligne (numéro, colonne, ligne, couleur, origine) |
+| `friendships` | une ligne par paire de joueurs : demandeur, destinataire, statut |
 
 Le plateau est stocké dans une chaîne de 42 caractères, index = `ligne * 7 + colonne`,
 ligne 0 = bas de la grille (`.` vide, `y` jaune, `r` rouge).
@@ -207,6 +235,9 @@ suivantes s'appuient dessus :
 - `stats_by_opponent()` — face à face : ratio victoire/défaite par adversaire
 - `stats_vs_ai()` — résultats par niveau de l'ordinateur
 - `leaderboard(limit)` — classement Elo de tous les joueurs
+- `search_players(q)` · `send_friend_request` · `accept_friend_request` ·
+  `decline_friend_request` · `remove_friend` · `my_friends()` · `friend_requests()` ·
+  `friend_profile(joueur)` — l'onglet Social
 - `game_history(limit, offset)` — historique détaillé
 
 Les parties solo sont exclues des statistiques classées (`mode = 'duel'`) mais
