@@ -1,11 +1,13 @@
 import {
   supabase, humanError, signIn, signUp, signOut, myProfile, usernameAvailable,
   requestPasswordReset, checkCurrentPassword, updatePassword, updateEmail, setUsername,
-  createGame, joinGame, playMove, forfeitGame, rematch,
+  createGame, joinGame, playMove, forfeitGame, createSoloGame, timeoutMove,
+  requestRematch, acceptRematch, declineRematch, TURN_SECONDS,
   getGame, ongoingGames, profilesByIds, subscribeToGame,
-  statsOverview, statsByColor, statsByOpponent, gameHistory,
+  statsOverview, statsByColor, statsByOpponent, statsVsAi, leaderboard, gameHistory,
 } from './api.js';
 import { Board, firstFreeRow } from './board.js';
+import { chooseColumn, LEVELS } from './ai.js';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
@@ -19,6 +21,9 @@ const state = {
   unsubscribe: null, // désabonnement temps réel
   poll: null,        // filet de sécurité si le websocket tombe
   busy: false,
+  clock: null,       // intervalle de l'horloge du tour
+  aiTimer: null,     // coup de l'ordinateur en attente
+  timeoutAsked: null,// tour pour lequel l'expiration a déjà été signalée
 };
 
 const board = new Board($('#board'), (col) => onColumnClick(col));
@@ -328,9 +333,12 @@ async function loadOngoing() {
     for (const g of games) {
       const oppId = g.host_id === state.me.id ? g.guest_id : g.host_id;
       const li = document.createElement('li');
+      const adversaire = g.mode === 'solo'
+        ? `l'ordinateur <b>(${esc(LEVELS[g.ai_level]?.name ?? '?')})</b>`
+        : `<b>${esc(names[oppId] ?? '?')}</b>`;
       li.innerHTML = `<span class="grow">${g.status === 'waiting'
         ? `Code <b>${esc(g.code)}</b> — en attente`
-        : `Contre <b>${esc(names[oppId] ?? '?')}</b> — ${g.move_count} coup(s)`}</span>`;
+        : `Contre ${adversaire} — ${g.move_count} coup(s)`}</span>`;
       const btn = document.createElement('button');
       btn.className = 'btn small';
       btn.textContent = g.status === 'waiting' ? 'Voir le code' : 'Reprendre';
@@ -378,7 +386,73 @@ function stopWatching() {
 
 function leaveGame() {
   stopWatching();
+  stopClock();
+  clearTimeout(state.aiTimer);
+  state.aiTimer = null;
   state.game = null;
+}
+
+/* ---------- horloge du tour ---------- */
+function stopClock() {
+  clearInterval(state.clock);
+  state.clock = null;
+  $('#clock').hidden = true;
+}
+
+// Le compte à rebours n'est qu'un affichage : c'est le serveur qui décide si le
+// délai est écoulé. Les deux navigateurs peuvent le signaler, celui dont c'est le
+// tour en premier, l'autre après un délai de grâce s'il ne l'a pas fait (onglet
+// fermé, connexion coupée).
+function startClock(g) {
+  stopClock();
+  const mine = g.turn === myColor(g);
+  if (g.status !== 'playing' || (isSolo(g) && !mine)) return;
+
+  const el = $('#clock');
+  const debut = Date.parse(g.turn_started_at ?? g.started_at ?? Date.now());
+  const cle = `${g.id}:${g.turn_started_at}`;
+  el.hidden = false;
+  el.classList.toggle('mine', mine);
+
+  const tick = async () => {
+    // borne haute : l'horloge du navigateur peut être en retard sur celle du
+    // serveur, sans quoi on afficherait 32 s au début d'un tour
+    const reste = Math.min(TURN_SECONDS * 1000, debut + TURN_SECONDS * 1000 - Date.now());
+    const secondes = Math.max(0, Math.ceil(reste / 1000));
+    $('#clock-fill').style.width = `${Math.max(0, Math.min(100, (reste / (TURN_SECONDS * 1000)) * 100))}%`;
+    $('#clock-left').textContent = secondes;
+    el.classList.toggle('urgent', secondes <= 10);
+
+    const grace = mine ? 0 : 3000;
+    if (reste < -grace && state.timeoutAsked !== cle && state.game?.id === g.id) {
+      state.timeoutAsked = cle;
+      try {
+        const next = await timeoutMove(g.id);
+        if (next && state.game?.id === next.id) { state.game = next; renderGame(next); }
+      } catch { /* la partie a avancé entre-temps */ }
+    }
+  };
+  tick();
+  state.clock = setInterval(tick, 200);
+}
+
+/* ---------- coup de l'ordinateur ---------- */
+function scheduleAi(g) {
+  clearTimeout(state.aiTimer);
+  if (!isSolo(g) || g.status !== 'playing' || g.turn === myColor(g)) return;
+  state.aiTimer = setTimeout(async () => {
+    const cur = state.game;
+    if (!cur || cur.id !== g.id || cur.status !== 'playing' || cur.turn === myColor(cur)) return;
+    const col = chooseColumn(cur.board, cur.turn, cur.ai_level);
+    if (col < 0) return;
+    try {
+      const next = await playMove(cur.id, col);
+      state.game = next;
+      renderGame(next);
+    } catch (err) {
+      setMsg('#game-msg', humanError(err));
+    }
+  }, 550);
 }
 
 async function openGame(game) {
@@ -391,27 +465,40 @@ async function openGame(game) {
   watchGame(game.id, (g) => onRemoteUpdate(g));
 }
 
+// Signature des champs qui changent l'affichage : évite de tout redessiner
+// (et de relancer l'horloge) sur un événement qui n'apporte rien.
+const signature = (g) => [g.board, g.status, g.turn_started_at, g.rematch_id,
+  g.rematch_requested_by, g.rematch_declined].join('|');
+
 async function onRemoteUpdate(g) {
   if (!state.game || g.id !== state.game.id) return;
-  if (g.board === state.game.board && g.status === state.game.status
-      && g.rematch_id === state.game.rematch_id) return;
+  if (signature(g) === signature(state.game)) return;
   state.game = g;
   renderGame(g);
-  // l'adversaire a lancé la revanche : on le suit
+  // la revanche a été acceptée : on suit vers la nouvelle partie
   if (g.rematch_id) {
     const next = await getGame(g.rematch_id);
     if (next) openGame(next);
   }
 }
 
+const isSolo = (g) => g.mode === 'solo';
+const aiName = (g) => `Ordinateur (${LEVELS[g.ai_level]?.name ?? '?'})`;
+
 function myColor(g) {
   if (!g.host_color) return null;
   return g.host_id === state.me.id ? g.host_color : (g.host_color === 'yellow' ? 'red' : 'yellow');
 }
 
+function opponentOf(g) {
+  if (isSolo(g)) return { id: null, name: aiName(g) };
+  const id = g.host_id === state.me.id ? g.guest_id : g.host_id;
+  return { id, name: state.names[id] ?? (g.status === 'waiting' ? 'en attente…' : '?') };
+}
+
 function renderGame(g) {
   const mine = myColor(g);
-  const oppId = g.host_id === state.me.id ? g.guest_id : g.host_id;
+  const opp = opponentOf(g);
   const oppColor = mine === 'yellow' ? 'red' : 'yellow';
 
   const meEl = $('#player-me');
@@ -419,8 +506,8 @@ function renderGame(g) {
   $('.pname', meEl).textContent = `${state.me.username} (toi)`;
 
   const oppEl = $('#player-opp');
-  oppEl.className = `player ${g.guest_id ? oppColor : ''}`;
-  $('.pname', oppEl).textContent = state.names[oppId] ?? (g.status === 'waiting' ? 'en attente…' : '?');
+  oppEl.className = `player ${g.guest_id || isSolo(g) ? oppColor : ''}`;
+  $('.pname', oppEl).textContent = opp.name;
 
   const myTurn = g.status === 'playing' && g.turn === mine;
   meEl.classList.toggle('turn', myTurn);
@@ -437,17 +524,53 @@ function renderGame(g) {
   } else if (g.status === 'playing') {
     status.innerHTML = myTurn
       ? `<strong>À toi de jouer</strong> — tu es ${colorLabel(mine)}`
-      : `Au tour de <strong>${esc(state.names[oppId] ?? 'ton adversaire')}</strong> (${colorLabel(oppColor)})`;
+      : `Au tour de <strong>${esc(opp.name)}</strong> (${colorLabel(oppColor)})`;
   } else {
     const forfeit = g.result === 'forfeit' ? ' par abandon' : '';
-    if (g.result === 'draw') status.innerHTML = '<strong>Match nul !</strong>';
-    else if (g.winner_id === state.me.id) status.innerHTML = `<strong>Victoire${forfeit} !</strong> 🎉`;
-    else status.innerHTML = `<strong>Défaite${forfeit}.</strong>`;
+    const delta = g.host_id === state.me.id ? g.host_elo_delta : g.guest_elo_delta;
+    const elo = delta === null || delta === undefined ? ''
+      : ` <span class="${delta >= 0 ? 'delta-plus' : 'delta-minus'}">${delta >= 0 ? '+' : ''}${delta} Elo</span>`;
+    if (g.result === 'draw') status.innerHTML = `<strong>Match nul !</strong>${elo}`;
+    else if (g.winner_id === state.me.id) status.innerHTML = `<strong>Victoire${forfeit} !</strong> 🎉${elo}`;
+    else status.innerHTML = `<strong>Défaite${forfeit}.</strong>${elo}`;
   }
 
   $('#btn-forfeit').hidden = g.status !== 'playing' && g.status !== 'waiting';
-  $('#btn-rematch').hidden = g.status !== 'finished' || !g.guest_id;
   setMsg('#game-msg', '');
+  renderRematch(g, opp);
+  startClock(g);
+  scheduleAi(g);
+}
+
+function renderRematch(g, opp) {
+  const box = $('#rematch-box');
+  const btn = $('#btn-rematch');
+  const actions = $('.rematch-actions', box);
+  btn.hidden = true;
+  box.hidden = true;
+
+  if (g.status !== 'finished') return;
+
+  if (isSolo(g)) {
+    btn.hidden = false;
+    btn.textContent = 'Rejouer';
+    return;
+  }
+  if (!g.guest_id) return;
+
+  if (g.rematch_requested_by === state.me.id) {
+    box.hidden = false;
+    actions.hidden = true;
+    $('#rematch-text').textContent = `Revanche demandée — en attente de la réponse de ${opp.name}.`;
+  } else if (g.rematch_requested_by) {
+    box.hidden = false;
+    actions.hidden = false;
+    $('#rematch-text').textContent = `${opp.name} demande une revanche.`;
+  } else {
+    btn.hidden = false;
+    btn.textContent = 'Revanche';
+    if (g.rematch_declined) setMsg('#game-msg', `${opp.name} a refusé la revanche.`);
+  }
 }
 
 const colorLabel = (c) => c === 'yellow'
@@ -491,18 +614,61 @@ $('#btn-forfeit').addEventListener('click', async () => {
   }
 });
 
+// Demande de revanche : en duel elle attend l'accord de l'adversaire, en solo
+// une nouvelle partie démarre directement.
 $('#btn-rematch').addEventListener('click', async () => {
   const g = state.game;
   if (!g) return;
   $('#btn-rematch').disabled = true;
   try {
-    openGame(await rematch(g.id));
+    const res = await requestRematch(g.id);
+    if (res.id !== g.id) openGame(res);       // solo : partie créée aussitôt
+    else { state.game = res; renderGame(res); }
   } catch (err) {
     setMsg('#game-msg', humanError(err));
   } finally {
     $('#btn-rematch').disabled = false;
   }
 });
+
+$('#btn-rematch-accept').addEventListener('click', async () => {
+  const g = state.game;
+  if (!g) return;
+  $('#btn-rematch-accept').disabled = true;
+  try {
+    openGame(await acceptRematch(g.id));
+  } catch (err) {
+    setMsg('#game-msg', humanError(err));
+  } finally {
+    $('#btn-rematch-accept').disabled = false;
+  }
+});
+
+$('#btn-rematch-decline').addEventListener('click', async () => {
+  const g = state.game;
+  if (!g) return;
+  try {
+    const next = await declineRematch(g.id);
+    state.game = next;
+    renderGame(next);
+    setMsg('#game-msg', 'Revanche refusée.');
+  } catch (err) {
+    setMsg('#game-msg', humanError(err));
+  }
+});
+
+/* ---------- partie contre l'ordinateur ---------- */
+$$('.levels .btn').forEach((btn) => btn.addEventListener('click', async () => {
+  setMsg('#home-msg', '');
+  $$('.levels .btn').forEach((b) => { b.disabled = true; });
+  try {
+    openGame(await createSoloGame(Number(btn.dataset.level)));
+  } catch (err) {
+    setMsg('#home-msg', humanError(err));
+  } finally {
+    $$('.levels .btn').forEach((b) => { b.disabled = false; });
+  }
+}));
 
 /* =======================================================
    Statistiques
@@ -512,12 +678,16 @@ const bar = (v) => `<div class="bar"><i style="width:${Math.max(0, Math.min(100,
 
 async function loadStats() {
   try {
-    const [o, colors, opps] = await Promise.all([statsOverview(), statsByColor(), statsByOpponent()]);
+    const [o, colors, opps, ai, top] = await Promise.all([
+      statsOverview(), statsByColor(), statsByOpponent(), statsVsAi(), leaderboard(20),
+    ]);
 
     const streak = o.streak
       ? `${o.streak} ${({ win: 'victoire', loss: 'défaite', draw: 'nul' })[o.streak_kind]}${o.streak > 1 ? 's' : ''}`
       : '—';
     $('#kpis').innerHTML = [
+      ['Elo', o.elo ?? '—'],
+      ['Rang', o.rank ? `#${o.rank}` : '—'],
       ['Parties', o.total],
       ['Victoires', o.wins],
       ['Défaites', o.losses],
@@ -550,6 +720,25 @@ async function loadStats() {
         <td class="num">${o2.ratio ?? (o2.wins ? '∞' : '—')}</td>
         <td class="num">${pct(o2.win_rate)}</td><td>${bar(o2.win_rate)}</td></tr>`).join('')}
       </tbody></table>` : '<p class="empty">Aucun adversaire affronté pour l’instant.</p>';
+
+    $('#leaderboard').innerHTML = top.length ? `
+      <table><thead><tr><th>#</th><th>Joueur</th><th class="num">Elo</th>
+        <th class="num">Parties</th><th class="num">Victoires</th></tr></thead>
+      <tbody>${top.map((l) => `<tr class="${l.is_me ? 'me' : ''}">
+        <td>${l.rank}</td><td>${esc(l.username)}${l.is_me ? ' (toi)' : ''}</td>
+        <td class="num">${l.elo}</td><td class="num">${l.played}</td>
+        <td class="num">${l.wins}</td></tr>`).join('')}
+      </tbody></table>` : '<p class="empty">Le classement se remplira après la première partie.</p>';
+
+    $('#stats-ai').innerHTML = ai.length ? `
+      <table><thead><tr><th>Niveau</th><th class="num">J</th><th class="num">V</th>
+        <th class="num">D</th><th class="num">N</th><th class="num">%V</th><th></th></tr></thead>
+      <tbody>${ai.map((n) => `<tr>
+        <td>${esc(LEVELS[n.level]?.name ?? n.level)}</td>
+        <td class="num">${n.games}</td><td class="num">${n.wins}</td>
+        <td class="num">${n.losses}</td><td class="num">${n.draws}</td>
+        <td class="num">${pct(n.win_rate)}</td><td>${bar(n.win_rate)}</td></tr>`).join('')}
+      </tbody></table>` : '<p class="empty">Aucune partie contre l’ordinateur.</p>';
   } catch (err) {
     $('#kpis').innerHTML = `<p class="msg">${esc(humanError(err))}</p>`;
   }
@@ -560,15 +749,18 @@ async function loadHistory() {
     const rows = await gameHistory(50);
     $('#history').innerHTML = rows.length ? `
       <table><thead><tr><th>Date</th><th>Adversaire</th><th>Couleur</th>
-        <th>Résultat</th><th class="num">Coups</th><th>Code</th></tr></thead>
+        <th>Résultat</th><th class="num">Coups</th><th class="num">Elo</th></tr></thead>
       <tbody>${rows.map((r) => `<tr>
         <td>${new Date(r.finished_at).toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short' })}</td>
-        <td>${esc(r.opponent)}</td>
+        <td>${r.mode === 'solo'
+              ? `<span class="muted">Ordinateur (${esc(LEVELS[r.ai_level]?.name ?? '?')})</span>`
+              : esc(r.opponent)}</td>
         <td><span class="swatch ${r.color}"></span>${r.color === 'yellow' ? 'Jaune' : 'Rouge'}</td>
         <td><span class="tag ${r.outcome}">${({ win: 'Victoire', loss: 'Défaite', draw: 'Nul' })[r.outcome]}</span>
             ${r.result === 'forfeit' ? '<span class="muted"> (abandon)</span>' : ''}</td>
         <td class="num">${r.move_count}</td>
-        <td class="muted">${esc(r.code)}</td></tr>`).join('')}
+        <td class="num">${r.elo_delta === null || r.elo_delta === undefined ? '—'
+          : `<span class="${r.elo_delta >= 0 ? 'delta-plus' : 'delta-minus'}">${r.elo_delta >= 0 ? '+' : ''}${r.elo_delta}</span>`}</td></tr>`).join('')}
       </tbody></table>` : '<p class="empty">Aucune partie terminée.</p>';
   } catch (err) {
     $('#history').innerHTML = `<p class="msg">${esc(humanError(err))}</p>`;

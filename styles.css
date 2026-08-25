@@ -175,6 +175,32 @@ main { max-width: 900px; margin: 0 auto; padding: 1.2rem; }
 .status { font-size: 1.05rem; min-height: 1.6rem; text-align: center; }
 .status strong { color: var(--txt); }
 
+.levels { display: flex; gap: .5rem; flex-wrap: wrap; }
+.levels .btn { flex: 1; min-width: 90px; }
+
+/* horloge du tour */
+.clock { display: flex; align-items: center; gap: .6rem; width: min(100%, 420px); }
+.clock-bar { flex: 1; height: 8px; border-radius: 4px; background: var(--bg-soft); overflow: hidden; }
+.clock-bar > i {
+  display: block; height: 100%; width: 100%;
+  background: var(--ok); transition: width .2s linear, background-color .3s;
+}
+.clock.mine .clock-bar > i { background: var(--blue); }
+.clock.urgent .clock-bar > i { background: var(--red); }
+.clock-left { font-variant-numeric: tabular-nums; color: var(--muted); min-width: 2.2em; text-align: right; }
+.clock.urgent .clock-left { color: var(--red); font-weight: 700; }
+
+.rematch-box {
+  display: flex; align-items: center; gap: .8rem; flex-wrap: wrap; justify-content: center;
+  background: var(--card); border: 1px solid var(--blue);
+  border-radius: var(--radius); padding: .7rem 1rem;
+}
+.rematch-actions { display: flex; gap: .4rem; }
+
+tr.me td { background: #3d6fff1f; font-weight: 600; }
+.delta-plus { color: var(--ok); }
+.delta-minus { color: #ff9aa0; }
+
 .board-outer { padding: 4px; border-radius: 20px; background: linear-gradient(180deg, #2b57d6, #1b3aa0); box-shadow: 0 24px 50px -24px #000; }
 .board {
   display: grid;
