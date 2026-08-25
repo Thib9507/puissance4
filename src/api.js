@@ -23,6 +23,10 @@ const ERRORS = {
   BAD_COLUMN: 'Colonne invalide.',
   USERNAME_TAKEN: 'Ce pseudo est déjà pris.',
   NO_REMATCH_REQUEST: 'Aucune demande de revanche en cours.',
+  NO_FRIEND_REQUEST: 'Aucune demande d’ami en cours.',
+  NOT_A_FRIEND: 'Cette fiche n’est visible que par ses amis.',
+  PLAYER_NOT_FOUND: 'Joueur introuvable.',
+  BAD_TARGET: 'Joueur invalide.',
   BAD_LEVEL: 'Niveau de difficulté invalide.',
   USERNAME_FORMAT: 'Pseudo : 3 à 20 caractères, lettres, chiffres, tiret ou souligné.',
 };
@@ -164,6 +168,16 @@ export async function profilesByIds(ids) {
   if (error) throw error;
   return Object.fromEntries((data ?? []).map((p) => [p.id, p.username]));
 }
+
+/* ---------------- social ---------------- */
+export const searchPlayers = (query) => rpc('search_players', { p_query: query });
+export const sendFriendRequest = (userId) => rpc('send_friend_request', { p_user: userId });
+export const acceptFriendRequest = (userId) => rpc('accept_friend_request', { p_user: userId });
+export const declineFriendRequest = (userId) => rpc('decline_friend_request', { p_user: userId });
+export const removeFriend = (userId) => rpc('remove_friend', { p_user: userId });
+export const myFriends = () => rpc('my_friends');
+export const friendRequests = () => rpc('friend_requests');
+export const friendProfile = (userId) => rpc('friend_profile', { p_user: userId });
 
 /* ---------------- stats ---------------- */
 export const statsOverview = () => rpc('stats_overview');

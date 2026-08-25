@@ -5,6 +5,8 @@ import {
   requestRematch, acceptRematch, declineRematch, TURN_SECONDS,
   getGame, ongoingGames, profilesByIds, subscribeToGame,
   statsOverview, statsByColor, statsByOpponent, statsVsAi, leaderboard, gameHistory,
+  searchPlayers, sendFriendRequest, acceptFriendRequest, declineFriendRequest,
+  removeFriend, myFriends, friendRequests, friendProfile,
 } from './api.js';
 import { Board, firstFreeRow } from './board.js';
 import { chooseColumn, LEVELS } from './ai.js';
@@ -38,6 +40,7 @@ function showView(name) {
   if (name === 'history') loadHistory();
   if (name === 'home') loadOngoing();
   if (name === 'account') loadAccount();
+  if (name === 'social') loadSocial();
 }
 
 $$('.navbtn').forEach((b) => b.addEventListener('click', () => {
@@ -227,6 +230,9 @@ async function boot(session) {
   // ne pas renvoyer au lobby si une partie est déjà ouverte à l'écran
   if (!state.game) showView('home');
   handleInviteHash();
+  friendRequests()
+    .then((d) => majBadgeSocial(d.filter((x) => x.direction === 'received').length))
+    .catch(() => {});
 }
 
 /* =======================================================
@@ -764,6 +770,175 @@ async function loadHistory() {
       </tbody></table>` : '<p class="empty">Aucune partie terminée.</p>';
   } catch (err) {
     $('#history').innerHTML = `<p class="msg">${esc(humanError(err))}</p>`;
+  }
+}
+
+/* =======================================================
+   Social
+   ======================================================= */
+const initiale = (nom) => (nom ?? '?').trim().charAt(0).toUpperCase();
+
+function ligneJoueur({ id, username, elo, sub }, onOpen) {
+  const li = document.createElement('li');
+  const btn = document.createElement('button');
+  btn.className = 'rowbtn';
+  btn.innerHTML = `<span class="avatar">${esc(initiale(username))}</span>
+    <span><span class="pseudo">${esc(username)}</span>
+    <span class="sub"> · ${elo} Elo${sub ? ` · ${esc(sub)}` : ''}</span></span>`;
+  if (onOpen) btn.addEventListener('click', () => onOpen(id));
+  else btn.disabled = true;
+  li.append(btn);
+  return li;
+}
+
+function boutonSocial(label, variante, action) {
+  const b = document.createElement('button');
+  b.className = `btn small ${variante}`;
+  b.textContent = label;
+  b.addEventListener('click', async () => {
+    b.disabled = true;
+    try { await action(); await loadSocial(); }
+    catch (err) { setMsg('#social-msg', humanError(err)); b.disabled = false; }
+  });
+  return b;
+}
+
+async function loadSocial() {
+  showFriendDetail(false);
+  try {
+    const [amis, demandes] = await Promise.all([myFriends(), friendRequests()]);
+
+    const listeAmis = $('#friends-list');
+    listeAmis.innerHTML = '';
+    if (!amis.length) {
+      listeAmis.innerHTML = '<li class="empty">Personne pour l’instant : cherche un joueur ci-dessus.</li>';
+    }
+    for (const a of amis) {
+      const bilan = a.games ? `${a.wins}V ${a.losses}D${a.draws ? ` ${a.draws}N` : ''} contre toi` : 'jamais affronté';
+      const li = ligneJoueur({ ...a, sub: bilan }, openFriendProfile);
+      li.append(boutonSocial('Retirer', 'ghost', () => removeFriend(a.id)));
+      listeAmis.append(li);
+    }
+
+    const listeDemandes = $('#requests-list');
+    listeDemandes.innerHTML = '';
+    $('#requests-card').hidden = demandes.length === 0;
+    for (const d of demandes) {
+      const recue = d.direction === 'received';
+      const li = ligneJoueur({ ...d, id: d.user_id, sub: recue ? 'souhaite t’ajouter' : 'demande envoyée' }, null);
+      if (recue) {
+        li.append(boutonSocial('Accepter', 'primary', () => acceptFriendRequest(d.user_id)));
+        li.append(boutonSocial('Refuser', 'ghost', () => declineFriendRequest(d.user_id)));
+      } else {
+        li.append(boutonSocial('Annuler', 'ghost', () => removeFriend(d.user_id)));
+      }
+      listeDemandes.append(li);
+    }
+    majBadgeSocial(demandes.filter((d) => d.direction === 'received').length);
+  } catch (err) {
+    setMsg('#social-msg', humanError(err));
+  }
+}
+
+function majBadgeSocial(n) {
+  const badge = $('#social-badge');
+  badge.hidden = !n;
+  badge.textContent = n || '';
+}
+
+const RELATIONS = {
+  friend: { label: 'Déjà ami', variante: 'ghost', actif: false },
+  sent: { label: 'Demande envoyée', variante: 'ghost', actif: false },
+  received: { label: 'Accepter', variante: 'primary', actif: true },
+  none: { label: 'Ajouter', variante: 'primary', actif: true },
+};
+
+$('#search-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const q = (new FormData(e.target).get('q') ?? '').trim();
+  setMsg('#social-msg', '');
+  const liste = $('#search-results');
+  liste.innerHTML = '';
+  if (q.length < 2) { setMsg('#social-msg', 'Il faut au moins 2 caractères.'); return; }
+  try {
+    const joueurs = await searchPlayers(q);
+    if (!joueurs.length) { liste.innerHTML = '<li class="empty">Aucun joueur à ce nom.</li>'; return; }
+    for (const j of joueurs) {
+      const rel = RELATIONS[j.relation] ?? RELATIONS.none;
+      const li = ligneJoueur(j, j.relation === 'friend' ? openFriendProfile : null);
+      if (rel.actif) {
+        li.append(boutonSocial(rel.label, rel.variante, () =>
+          j.relation === 'received' ? acceptFriendRequest(j.id) : sendFriendRequest(j.id)));
+      } else {
+        const tag = document.createElement('span');
+        tag.className = 'tag';
+        tag.textContent = rel.label;
+        li.append(tag);
+      }
+      liste.append(li);
+    }
+  } catch (err) {
+    setMsg('#social-msg', humanError(err));
+  }
+});
+
+function showFriendDetail(show) {
+  $('#friend-detail').hidden = !show;
+  $('#social-list').hidden = show;
+}
+
+$('#btn-social-back').addEventListener('click', () => loadSocial());
+
+async function openFriendProfile(userId) {
+  try {
+    const f = await friendProfile(userId);
+    const h = f.head_to_head ?? {};
+    const couleurs = (f.by_color ?? []).map((c) => `<tr>
+      <td><span class="swatch ${c.color}"></span>${c.color === 'yellow' ? 'Jaune' : 'Rouge'}</td>
+      <td class="num">${c.games}</td><td class="num">${c.wins}</td>
+      <td class="num">${pct(c.win_rate)}</td><td>${bar(c.win_rate)}</td></tr>`).join('');
+    const recentes = (f.recent ?? []).map((r) => `<tr>
+      <td>${new Date(r.finished_at).toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short' })}</td>
+      <td><span class="tag ${r.outcome}">${({ win: 'Victoire', loss: 'Défaite', draw: 'Nul' })[r.outcome]}</span></td>
+      <td class="num">${r.move_count} coups</td></tr>`).join('');
+
+    $('#friend-card').innerHTML = `
+      <div class="card">
+        <div class="friend-head">
+          <span class="avatar">${esc(initiale(f.username))}</span>
+          <div>
+            <h2 style="margin:0">${esc(f.username)}</h2>
+            <span class="sub">Membre depuis le
+              ${new Date(f.member_since).toLocaleDateString('fr-FR', { dateStyle: 'long' })}</span>
+          </div>
+        </div>
+      </div>
+      <div class="kpis">
+        ${[['Elo', f.elo], ['Rang', f.rank ? `#${f.rank}` : '—'], ['Parties', f.total],
+           ['Victoires', f.wins], ['Défaites', f.losses],
+           ['Taux de victoire', pct(f.win_rate)], ['Meilleure série', f.best_win_streak],
+           ['Coups / partie', f.avg_moves ?? '—']]
+          .map(([k, v]) => `<div class="kpi"><div class="v">${esc(v)}</div><div class="k">${k}</div></div>`).join('')}
+      </div>
+      <div class="card">
+        <h2>Face à face avec toi</h2>
+        ${h.games ? `<div class="kpis">
+          ${[['Parties', h.games], ['Tes victoires', h.wins], ['Tes défaites', h.losses], ['Nuls', h.draws]]
+            .map(([k, v]) => `<div class="kpi"><div class="v">${v}</div><div class="k">${k}</div></div>`).join('')}
+          </div>
+          <table style="margin-top:1rem"><thead><tr><th>Date</th><th>Résultat</th><th class="num">Durée</th></tr></thead>
+          <tbody>${recentes}</tbody></table>`
+        : '<p class="empty">Vous ne vous êtes encore jamais affrontés.</p>'}
+      </div>
+      <div class="card">
+        <h2>Ses couleurs</h2>
+        ${couleurs ? `<table><thead><tr><th>Couleur</th><th class="num">J</th><th class="num">V</th>
+          <th class="num">%V</th><th></th></tr></thead><tbody>${couleurs}</tbody></table>`
+        : '<p class="empty">Aucune partie classée.</p>'}
+      </div>`;
+    showFriendDetail(true);
+  } catch (err) {
+    setMsg('#social-msg', humanError(err));
   }
 }
 

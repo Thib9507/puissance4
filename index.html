@@ -88,6 +88,7 @@
       <button class="navbtn is-active" data-view="home">Jouer</button>
       <button class="navbtn" data-view="stats">Stats</button>
       <button class="navbtn" data-view="history">Historique</button>
+      <button class="navbtn" data-view="social">Social<span class="badge" id="social-badge" hidden></span></button>
       <button class="navbtn" data-view="account">Compte</button>
     </nav>
     <div class="me">
@@ -207,6 +208,40 @@
       <div class="card">
         <h2>Historique</h2>
         <div id="history"></div>
+      </div>
+    </div>
+
+    <!-- ---------- SOCIAL ---------- -->
+    <div class="view" data-view="social" hidden>
+      <div id="social-list">
+        <div class="card">
+          <h2>Ajouter un ami</h2>
+          <p class="muted">Cherche un joueur par son pseudo (2 caractères minimum).</p>
+          <form id="search-form" class="row-form" novalidate>
+            <label class="field grow">
+              <span>Pseudo</span>
+              <input name="q" type="text" placeholder="thibz…" autocapitalize="none" spellcheck="false" />
+            </label>
+            <button class="btn primary" type="submit">Chercher</button>
+          </form>
+          <ul class="list" id="search-results"></ul>
+          <p class="msg" id="social-msg"></p>
+        </div>
+
+        <div class="card" id="requests-card" hidden>
+          <h2>Demandes</h2>
+          <ul class="list" id="requests-list"></ul>
+        </div>
+
+        <div class="card">
+          <h2>Mes amis</h2>
+          <ul class="list" id="friends-list"></ul>
+        </div>
+      </div>
+
+      <div id="friend-detail" hidden>
+        <button class="btn ghost" id="btn-social-back">← Mes amis</button>
+        <div id="friend-card"></div>
       </div>
     </div>
 
